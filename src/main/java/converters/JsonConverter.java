@@ -8,13 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.kafka.common.cache.Cache;
 import org.apache.kafka.common.cache.LRUCache;
 import org.apache.kafka.common.cache.SynchronizedCache;
-import org.apache.kafka.connect.data.Schema;
-import org.apache.kafka.connect.data.Struct;
-import org.apache.kafka.connect.data.Field;
-import org.apache.kafka.connect.data.SchemaAndValue;
-import org.apache.kafka.connect.data.Timestamp;
-import org.apache.kafka.connect.data.Time;
-import org.apache.kafka.connect.data.Decimal;
+import org.apache.kafka.connect.data.*;
 import org.apache.kafka.connect.data.Date;
 import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.storage.Converter;
@@ -23,11 +17,7 @@ import org.apache.kafka.connect.storage.StringConverterConfig;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.EnumMap;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.*;
 
 import static org.apache.kafka.common.utils.Utils.mkSet;
 
@@ -142,6 +132,69 @@ public class JsonConverter implements Converter {
         TO_CONNECT_CONVERTERS.put(Schema.Type.STRUCT, new JsonToConnectTypeConverter() {
             @Override
             public Object convert(Schema schema, JsonNode value) {
+                Schema override = new Schema() {
+                    @Override
+                    public Type type() {
+                        return Type.STRUCT;
+                    }
+
+                    @Override
+                    public boolean isOptional() {
+                        return false;
+                    }
+
+                    @Override
+                    public Object defaultValue() {
+                        return null;
+                    }
+
+                    @Override
+                    public String name() {
+                        return "override";
+                    }
+
+                    @Override
+                    public Integer version() {
+                        return 1;
+                    }
+
+                    @Override
+                    public String doc() {
+                        return null;
+                    }
+
+                    @Override
+                    public Map<String, String> parameters() {
+                        Map<String, String> wrappedBean = new HashMap<>();
+                        wrappedBean.put("bean",null);
+                        return wrappedBean;
+                    }
+
+                    @Override
+                    public Schema keySchema() {
+                        return null;
+                    }
+
+                    @Override
+                    public Schema valueSchema() {
+                        return null;
+                    }
+
+                    @Override
+                    public List<Field> fields() {
+                        return null;
+                    }
+
+                    @Override
+                    public Field field(String fieldName) {
+                        return null;
+                    }
+
+                    @Override
+                    public Schema schema() {
+                        return null;
+                    }
+                };
                 if (!value.isObject())
                     throw new DataException("Structs should be encoded as JSON objects, but found " + value.getNodeType());
 

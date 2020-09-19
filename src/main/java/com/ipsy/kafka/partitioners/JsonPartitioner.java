@@ -1,72 +1,81 @@
 package com.ipsy.kafka.partitioners;
 
 import io.confluent.connect.storage.partitioner.DefaultPartitioner;
+import io.confluent.connect.storage.partitioner.PartitionerConfig;
 import org.apache.kafka.common.utils.Utils;
-import org.apache.kafka.connect.data.Schema;
-import org.apache.kafka.connect.data.Schema.Type;
-import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.regex.Pattern;
 
 import io.confluent.connect.storage.common.StorageCommonConfig;
-import io.confluent.connect.storage.errors.PartitionException;
+
 
 public class JsonPartitioner<T> extends DefaultPartitioner<T> {
     private static final Logger log = LoggerFactory.getLogger(JsonPartitioner.class);
     private List<String> fieldNames;
-    private String delim;
+    private static final String fieldDelim = Pattern.quote(".");
+    private static final String defaultEncodedPartitioner = "unrecognized";
 
 
     @SuppressWarnings("unchecked")
     @Override
     public void configure(Map<String, Object> config) {
-        fieldNames = (List<String>) config.get("partition.field.name");
-        //delim = (String) config.get(StorageCommonConfig.DIRECTORY_DELIM_CONFIG);
-        delim = ",";
+        fieldNames = (List<String>) config.get(PartitionerConfig.PARTITION_FIELD_NAME_CONFIG);
+        delim = (String) config.get(StorageCommonConfig.DIRECTORY_DELIM_CONFIG);
     }
 
     @Override
     public String encodePartition(SinkRecord sinkRecord) {
         Object value = sinkRecord.value();
-        if (value instanceof Struct) {
-            final Schema valueSchema = sinkRecord.valueSchema();
-            final Struct struct = (Struct) value;
+        java.util.HashMap hs = (java.util.HashMap)value;
 
-            StringBuilder builder = new StringBuilder();
-            for (String fieldName : fieldNames) {
+        try {
+            if (value instanceof HashMap) {
+                final HashMap map = (HashMap) value;
+
+                StringBuilder builder = new StringBuilder();
+                for (String fieldName : fieldNames) {
+                    log.debug("fieldName: "+fieldName);
+                    HashMap intermediate = map;
+
+                    if (builder.length() > 0) {
+                        builder.append(this.delim);
+                    }
+
+                    for (String fieldPart : fieldName.trim().split(fieldDelim)) {
+                        log.debug("fieldPart: "+fieldPart);
+
+                        // Check if value has more childs
+                        Object partitionKey = intermediate.get(fieldPart);
+                        if (partitionKey instanceof HashMap) {
+                            log.debug("PartitionKey is HashMap type.");
+                            intermediate = (HashMap) partitionKey;
+                        } else {
+                            log.debug("PartitionKey is not HashMap type.");
+                            builder.append((String) partitionKey);
+                        }
+                    }
+                }
                 if (builder.length() > 0) {
-                    builder.append(this.delim);
+                    log.debug("We could not find a valid field name, using default");
+                    return defaultEncodedPartitioner;
                 }
 
-                Object partitionKey = struct.get(fieldName);
-                Type type = valueSchema.field(fieldName).schema().type();
-                switch (type) {
-                    case INT8:
-                    case INT16:
-                    case INT32:
-                    case INT64:
-                        Number record = (Number) partitionKey;
-                        builder.append(fieldName + "=" + record.toString());
-                        break;
-                    case STRING:
-                        builder.append(fieldName + "=" + (String) partitionKey);
-                        break;
-                    case BOOLEAN:
-                        boolean booleanRecord = (boolean) partitionKey;
-                        builder.append(fieldName + "=" + Boolean.toString(booleanRecord));
-                        break;
-                    default:
-                        log.error("Type {} is not supported as a partition key.", type.getName());
-                        throw new PartitionException("Error encoding partition.");
-                }
+                String encodedPartition = builder.toString();
+                log.debug("Final encoded partition is "+encodedPartition);
+                return builder.toString();
+            } else {
+                log.error("Value is not HashMap type.");
+                return defaultEncodedPartitioner;
             }
-            return builder.toString();
-        } else {
-            log.error("Value is not Struct type.");
-            throw new PartitionException("Error encoding partition.");
+        } catch (Exception ex) {
+            log.error("Unhandled exception.");
+            log.error(ex.getMessage());
+            log.error(ex.getStackTrace().toString());
+            return defaultEncodedPartitioner;
         }
     }
 
